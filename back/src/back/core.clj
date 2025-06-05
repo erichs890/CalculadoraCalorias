@@ -3,164 +3,105 @@
             [compojure.route :as route]
             [ring.adapter.jetty :refer [run-jetty]]
             [ring.middleware.defaults :refer [wrap-defaults api-defaults]]
-            [clj-http.client :as http]
-            [cheshire.core :as json])
+            [cheshire.core :as json]
+            [clj-http.client :as http])
   (:import (java.time LocalDate)
            (java.net URLEncoder)))
 
-;; Átomo para guardar o estado da aplicação
-(def app-state (atom {:usuario nil
-                      :transacoes []}))
+(defonce estado (atom {:usuario nil :transacoes []}))
 
-;; Funções auxiliares para datas
-(defn parse-data [data-str]
-  (try
-    (java.time.LocalDate/parse data-str)
-    (catch Exception _ nil)))
+(defn parse-data [s]
+  (try (LocalDate/parse s) (catch Exception _ nil)))
 
-(defn transacao-entre? [transacao data-inicio data-fim]
-  (let [data (parse-data (:data transacao))]
-    (and (not (.isBefore data data-inicio))
-         (not (.isAfter data data-fim)))))
+(defn dentro-do-periodo? [data-str inicio fim]
+  (let [data (parse-data data-str)]
+    (and (not (.isBefore data inicio))
+         (not (.isAfter data fim)))))
 
-;; Rotas da API
-(defroutes app-routes
-           (GET "/" [] "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK")
+(defroutes rotas
+           (GET "/" [] "Servidor de Calorias Ativo.")
 
-           ;; Usuário - cadastrar e consultar
            (POST "/usuario" req
-                 (let [dados (json/parse-string (slurp (:body req)) true)]
-                   (swap! app-state assoc :usuario dados)
-                   {:status 200
-                    :headers {"Content-Type" "application/json"}
-                    :body (json/generate-string {:mensagem "Usuário registrado com sucesso."})}))
+             (let [body (-> req :body slurp (json/parse-string true))]
+               (swap! estado assoc :usuario body)
+               {:status 200
+                :headers {"Content-Type" "application/json"}
+                :body (json/generate-string {:mensagem "Usuário cadastrado com sucesso."})}))
 
            (GET "/usuario" []
-                (let [usuario (:usuario @app-state)]
-                  (if usuario
-                    {:status 200
-                     :headers {"Content-Type" "application/json"}
-                     :body (json/generate-string usuario)}
-                    {:status 404
-                     :headers {"Content-Type" "application/json"}
-                     :body (json/generate-string {:erro "Usuário não encontrado."})})))
+             (let [u (:usuario @estado)]
+               (if u
+                 {:status 200 :headers {"Content-Type" "application/json"}
+                  :body (json/generate-string u)}
+                 {:status 200 :headers {"Content-Type" "application/json"}
+                  :body (json/generate-string nil)})))
 
-           ;; Registrar consumo de alimento
            (POST "/alimento" req
-                 (let [body-data   (json/parse-string (slurp (:body req)) true)
-                       descricao   (:descricao body-data)
-                       api-url     (str "https://caloriasporalimentoapi.herokuapp.com/api/calorias/"
-                                        "?descricao=" (URLEncoder/encode descricao "UTF-8"))]
-                   (try
-                     (let [resp       (http/get api-url {:as :json})
-                           resultados (get-in resp [:body])
-                           primeira   (first resultados)]
-                       (if (and primeira (contains? primeira :calorias))
-                         (let [calorias       (:calorias primeira)
-                               transacao      {:tipo      "ganho"
-                                               :descricao descricao
-                                               :calorias  calorias
-                                               :data      (str (LocalDate/now))}
-                               _              (swap! app-state update :transacoes conj transacao)]
-                           {:status  200
-                            :headers {"Content-Type" "application/json"}
-                            :body    (json/generate-string
-                                       {:mensagem  "Consumo registrado com sucesso."
-                                        :transacao transacao})})
-                         {:status  404
-                          :headers {"Content-Type" "application/json"}
-                          :body    (json/generate-string
-                                     {:erro (str "Alimento não encontrado para '" descricao "'.")})}))
-                     (catch Exception e
-                       {:status  500
-                        :headers {"Content-Type" "application/json"}
-                        :body    (json/generate-string
-                                   {:erro     "Falha ao consultar API de calorias."
-                                    :detalhes (.getMessage e)})}))))
+             (let [desc (:descricao (-> req :body slurp (json/parse-string true)))
+                   url (str "https://caloriasporalimentoapi.herokuapp.com/api/calorias/?descricao="
+                            (URLEncoder/encode desc "UTF-8"))]
+               (try
+                 (let [res   (http/get url {:as :json})
+                       itens (:body res) ;; <- já é um vetor
+                       item  (first itens)
+                       cal   (:calorias item)]
+                   (if cal
+                     (let [t {:tipo "ganho" :descricao desc :calorias cal :data (str (LocalDate/now))}]
+                       (swap! estado update :transacoes conj t)
+                       {:status 200 :headers {"Content-Type" "application/json"}
+                        :body (json/generate-string {:mensagem "Alimento registrado." :transacao t})})
+                     {:status 404 :headers {"Content-Type" "application/json"}
+                      :body (json/generate-string {:erro "Alimento não encontrado"})}))
+                 (catch Exception e
+                   {:status 500 :headers {"Content-Type" "application/json"}
+                    :body (json/generate-string {:erro "Erro API externa"
+                                                 :detalhes (.getMessage e)})}))))
 
-           ;; Registrar realização de atividade física
+
            (POST "/atividade" req
-                 (let [body-data (json/parse-string (slurp (:body req)) true)
-                       atividade (:atividade body-data)
-                       url (str "https://api.api-ninjas.com/v1/caloriesburned?activity="
-                                (URLEncoder/encode atividade "UTF-8"))]
-                   (try
-                     (let [resp       (http/get url {:headers {"X-Api-Key" "RaqCO+Sd6+TUFytNoDUGRw==WcZX1CDynYAXO554"}
-                                                     :as :json})
-                           resultados (get-in resp [:body])
-                           primeira   (first resultados)]
-                       (if (and primeira (contains? primeira :total_calories))
-                         (let [calorias   (:total_calories primeira)
-                               transacao  {:tipo      "perda"
-                                           :descricao atividade
-                                           :calorias  calorias
-                                           :data      (str (LocalDate/now))}
-                               _          (swap! app-state update :transacoes conj transacao)]
-                           {:status 200
-                            :headers {"Content-Type" "application/json"}
-                            :body (json/generate-string
-                                    {:mensagem "Atividade registrada com sucesso."
-                                     :transacao transacao})})
-                         {:status 404
-                          :headers {"Content-Type" "application/json"}
-                          :body (json/generate-string
-                                  {:erro (str "Atividade não encontrada: " atividade)})}))
-                     (catch Exception e
-                       {:status 500
-                        :headers {"Content-Type" "application/json"}
-                        :body (json/generate-string
-                                {:erro "Erro ao consultar API de atividade física."
-                                 :detalhes (.getMessage e)})}))))
+             (let [desc (:atividade (-> req :body slurp (json/parse-string true)))
+                   url (str "https://api.api-ninjas.com/v1/caloriesburned?activity="
+                            (URLEncoder/encode desc "UTF-8"))]
+               (try
+                 (let [res (http/get url {:as :json
+                                          :headers {"X-Api-Key" "RaqCO+Sd6+TUFytNoDUGRw==WcZX1CDynYAXO554"}})
+                       item (first (:body res))
+                       cal (:total_calories item)]
+                   (if cal
+                     (let [t {:tipo "perda" :descricao desc :calorias cal :data (str (LocalDate/now))}]
+                       (swap! estado update :transacoes conj t)
+                       {:status 200 :headers {"Content-Type" "application/json"}
+                        :body (json/generate-string {:mensagem "Atividade registrada." :transacao t})})
+                     {:status 404 :body (json/generate-string {:erro "Atividade não encontrada"})}))
+                 (catch Exception e
+                   {:status 500 :body (json/generate-string {:erro "Erro API externa"})}))))
 
-           ;; Consultar extrato de transações por período
            (GET "/extrato" req
-                (let [params (:query-params req)
-                      data-inicio (some-> (get params "data_inicio") parse-data)
-                      data-fim    (some-> (get params "data_fim") parse-data)
-                      transacoes  (:transacoes @app-state)
-                      filtrar (fn [t]
-                                (if (and data-inicio data-fim)
-                                  (transacao-entre? t data-inicio data-fim)
-                                  true))
-                      extrato (filter filtrar transacoes)]
-                  {:status 200
-                   :headers {"Content-Type" "application/json"}
-                   :body (json/generate-string {:extrato (vec extrato)})}))
+             (let [{:strs [inicio fim]} (:query-params req)
+                   i (parse-data inicio)
+                   f (parse-data fim)
+                   extrato (filter #(dentro-do-periodo? (:data %) i f)
+                                   (:transacoes @estado))]
+               {:status 200 :headers {"Content-Type" "application/json"}
+                :body (json/generate-string {:extrato extrato})}))
 
            (GET "/saldo" req
-                (let [params (:query-params req)
-                      _ (println "Params:" params)
-                      data-inicio (some-> (get params "data_inicio") parse-data)
-                      data-fim    (some-> (get params "data_fim") parse-data)
-                      _ (println "Data início:" data-inicio "Data fim:" data-fim)
-                      transacoes  (:transacoes @app-state)
-                      filtrar (fn [t]
-                                (if (and data-inicio data-fim)
-                                  (transacao-entre? t data-inicio data-fim)
-                                  true))
-                      transacoes-filtradas (filter filtrar transacoes)
-                      _ (println "Transações filtradas:" (count transacoes-filtradas))
-                      saldo (reduce (fn [acc t]
-                                      (case (:tipo t)
-                                        "ganho" (+ acc (:calorias t))
-                                        "perda" (- acc (:calorias t))
-                                        (do (println "Tipo desconhecido:" (:tipo t)) acc)))
-                                    0
-                                    transacoes-filtradas)]
-                  {:status 200
-                   :headers {"Content-Type" "application/json"}
-                   :body (json/generate-string {:saldo saldo})}))
+             (let [{:strs [data_inicio data_fim]} (:query-params req)
+                   i (parse-data data_inicio)
+                   f (parse-data data_fim)
+                   trans (filter #(dentro-do-periodo? (:data %) i f)
+                                 (:transacoes @estado))
+                   saldo (reduce (fn [acc t]
+                                   (case (:tipo t)
+                                     "ganho" (+ acc (:calorias t))
+                                     "perda" (- acc (:calorias t))
+                                     acc))
+                                 0 trans)]
+               {:status 200 :headers {"Content-Type" "application/json"}
+                :body (json/generate-string {:saldo saldo})}))
 
+           (route/not-found "Rota inválida."))
 
+(def app (wrap-defaults rotas api-defaults))
 
-           ;; Fallback para rotas não encontradas
-           (route/not-found "Recurso não encontrado"))
-
-;; Middleware para API padrão
-(def app
-  (wrap-defaults app-routes api-defaults))
-
-;; Inicializador do servidor
-(defn -main []
-  (run-jetty app {:port 3000 :join? false}))
-
+(defn -main [] (run-jetty app {:port 3000 :join? false}))

@@ -102,6 +102,9 @@
   (read-line))
 
 (defn -main []
+  (let [usuario (get-json "/usuario")]
+    (when (or (nil? usuario) (empty? usuario))
+      (cadastrar-dados-pessoais)))
   (let [choice (menu)]
     (case choice
       "1" (do
@@ -129,12 +132,3 @@
       (do
         (println "Opção inválida, tente novamente.")
         (recur)))))
-(try
-  (let [usuario (get-json "/usuario")]
-    (when (or (nil? usuario) (empty? usuario))
-      (cadastrar-dados-pessoais)))
-  (catch Exception e
-    (cadastrar-dados-pessoais)))
-
-
-(-main)
