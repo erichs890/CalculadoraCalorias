@@ -25,7 +25,7 @@
 
 ;; Rotas da API
 (defroutes app-routes
-           (GET "/" [] "Servidor Backend Gilson ativo.")
+           (GET "/" [] "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK")
 
            ;; Usuário - cadastrar e consultar
            (POST "/usuario" req
@@ -163,3 +163,4 @@
 ;; Inicializador do servidor
 (defn -main []
   (run-jetty app {:port 3000 :join? false}))
+

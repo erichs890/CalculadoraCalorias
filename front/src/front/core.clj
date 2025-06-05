@@ -38,6 +38,12 @@
               res (post-json "/usuario" dados)]
           (println "Resposta do servidor:" res))))))
 
+(defn consultar-dados-pessoais []
+  (println "Consultando dados pessoais...")
+  (let [res (get-json "/usuario")]
+    (println "Dados do usuário:")
+    (println res)))
+
 
 (defn registrar-consumo-alimento []
   (println "Informe a descrição do alimento consumido:")
@@ -95,28 +101,34 @@
   (read-line))
 
 (defn -main []
-
   (let [choice (menu)]
     (case choice
+
       "1" (do
-            (println "\n[1] Registrar consumo de alimento")
+            (println "\n[1] Seus dados pessoais:")
+            (consultar-dados-pessoais)
+            (recur))
+
+      "2" (do
+            (println "\n[2] Registrar consumo de alimento")
             (registrar-consumo-alimento)
             (recur))
-      "2" (do
-            (println "\n[2] Registrar atividade física")
+      "3" (do
+            (println "\n[3] Registrar atividade física")
             (registrar-atividade-fisica)
             (recur))
-      "3" (do
-            (println "\n[3] Consultar extrato de transações")
+      "4" (do
+            (println "\n[4] Consultar extrato de transações")
             (consultar-extrato)
             (recur))
-      "4" (do
-            (println "\n[4] Consultar saldo de calorias")
+      "5" (do
+            (println "\n[5] Consultar saldo de calorias")
             (consultar-saldo-calorias)
             (recur))
       "0" (println "Saindo... Obrigado!")
       (do
         (println "Opção inválida, tente novamente.")
         (recur)))))
+
 (cadastrar-dados-pessoais)
 (-main)
