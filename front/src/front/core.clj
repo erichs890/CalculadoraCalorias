@@ -91,10 +91,11 @@
 (defn menu []
 
   (println "\n=== Menu da Aplicação ===")
-  (println "1. Registrar consumo de alimento")
-  (println "2. Registrar atividade física")
-  (println "3. Consultar extrato de transações")
-  (println "4. Consultar saldo de calorias")
+  (println "1. Consultar dados pessoais")
+  (println "2. Registrar consumo de alimento")
+  (println "3. Registrar atividade física")
+  (println "4. Consultar extrato de transações")
+  (println "5. Consultar saldo de calorias")
   (println "0. Sair")
   (print "Escolha uma opção: ")
   (flush)
@@ -103,7 +104,6 @@
 (defn -main []
   (let [choice (menu)]
     (case choice
-
       "1" (do
             (println "\n[1] Seus dados pessoais:")
             (consultar-dados-pessoais)
@@ -129,6 +129,12 @@
       (do
         (println "Opção inválida, tente novamente.")
         (recur)))))
+(try
+  (let [usuario (get-json "/usuario")]
+    (when (or (nil? usuario) (empty? usuario))
+      (cadastrar-dados-pessoais)))
+  (catch Exception e
+    (cadastrar-dados-pessoais)))
 
-(cadastrar-dados-pessoais)
+
 (-main)
