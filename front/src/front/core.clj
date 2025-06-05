@@ -38,11 +38,6 @@
               res (post-json "/usuario" dados)]
           (println "Resposta do servidor:" res))))))
 
-(defn consultar-dados-pessoais []
-  (println "Consultando dados pessoais...")
-  (let [res (get-json "/usuario")]
-    (println "Dados do usuário:")
-    (println res)))
 
 (defn registrar-consumo-alimento []
   (println "Informe a descrição do alimento consumido:")
@@ -88,43 +83,40 @@
 
 
 (defn menu []
+
   (println "\n=== Menu da Aplicação ===")
-  (println "1. Cadastrar/consultar dados pessoais")
-  (println "2. Registrar consumo de alimento")
-  (println "3. Registrar atividade física")
-  (println "4. Consultar extrato de transações")
-  (println "5. Consultar saldo de calorias")
+  (println "1. Registrar consumo de alimento")
+  (println "2. Registrar atividade física")
+  (println "3. Consultar extrato de transações")
+  (println "4. Consultar saldo de calorias")
   (println "0. Sair")
   (print "Escolha uma opção: ")
   (flush)
   (read-line))
 
 (defn -main []
-  (let [choice (read-line)]
+
+  (let [choice (menu)]
     (case choice
       "1" (do
-            (println "\n[1] Cadastrar dados pessoais")
-            (cadastrar-dados-pessoais)
-            (println "\n[1] Consultar dados pessoais")
-            (consultar-dados-pessoais)
-            (recur))
-      "2" (do
-            (println "\n[2] Registrar consumo de alimento")
+            (println "\n[1] Registrar consumo de alimento")
             (registrar-consumo-alimento)
             (recur))
-      "3" (do
-            (println "\n[3] Registrar atividade física")
+      "2" (do
+            (println "\n[2] Registrar atividade física")
             (registrar-atividade-fisica)
             (recur))
-      "4" (do
-            (println "\n[4] Consultar extrato de transações")
+      "3" (do
+            (println "\n[3] Consultar extrato de transações")
             (consultar-extrato)
             (recur))
-      "5" (do
-            (println "\n[5] Consultar saldo de calorias")
+      "4" (do
+            (println "\n[4] Consultar saldo de calorias")
             (consultar-saldo-calorias)
             (recur))
       "0" (println "Saindo... Obrigado!")
       (do
         (println "Opção inválida, tente novamente.")
         (recur)))))
+(cadastrar-dados-pessoais)
+(-main)
