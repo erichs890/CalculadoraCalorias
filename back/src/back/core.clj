@@ -12,6 +12,9 @@
 (defonce usuarios (atom nil))
 (defonce alimentos (atom []))
 (defonce atividades (atom []))
+(defonce extrato (atom []))
+(defonce saldo (atom []))
+
 
 ;; FUNÇÕES AUXILIARES
 (defn parse-data [s]
@@ -51,6 +54,8 @@
                    (if cal
                      (let [trans {:tipo "ganho" :descricao desc :calorias cal :data (str (LocalDate/now))}]
                        (swap! alimentos conj trans)
+                       (swap! extrato conj trans)
+                       (swap! saldo conj trans)
                        {:status 200 :headers {"Content-Type" "application/json"}
                         :body (json/generate-string {:mensagem "Alimento registrado." :transacao trans})})
                      {:status 404 :headers {"Content-Type" "application/json"}
@@ -77,6 +82,8 @@
                    (if cal
                      (let [trans {:tipo "perda" :descricao desc :calorias cal :data (str (LocalDate/now))}]
                        (swap! atividades conj trans)
+                       (swap! extrato conj trans)
+                       (swap! saldo conj trans)
                        {:status 200 :headers {"Content-Type" "application/json"}
                         :body (json/generate-string {:mensagem "Atividade registrada." :transacao trans})})
                      {:status 404 :body (json/generate-string {:erro "Atividade não encontrada"})}))
@@ -91,28 +98,46 @@
            (GET "/extrato" req
              (let [{:strs [inicio fim]} (:query-params req)
                    i (parse-data inicio)
-                   f (parse-data fim)
-                   transacoes (concat @alimentos @atividades)
-                   extrato (filter #(dentro-do-periodo? (:data %) i f) transacoes)]
-               {:status 200
-                :headers {"Content-Type" "application/json"}
-                :body (json/generate-string {:extrato extrato})}))
+                   f (parse-data fim)]
+               (if (and i f)
+                 (let [extrato (filter #(dentro-do-periodo? (:data %) i f) @extrato)]
+                   {:status 200
+                    :headers {"Content-Type" "application/json"}
+                    :body (json/generate-string {:extrato extrato})})
+                 {:status 400
+                  :headers {"Content-Type" "application/json"}
+                  :body (json/generate-string {:erro "Datas inválidas."})})))
 
-           (GET "/saldo" req
-             (let [{:strs [data_inicio data_fim]} (:query-params req)
-                   i (parse-data data_inicio)
-                   f (parse-data data_fim)
-                   trans (filter #(dentro-do-periodo? (:data %) i f)
-                                 (concat @alimentos @atividades))
-                   saldo (reduce (fn [acc t]
-                                   (case (:tipo t)
-                                     "ganho" (+ acc (:calorias t))
-                                     "perda" (- acc (:calorias t))
-                                     acc))
-                                 0 trans)]
+
+           (GET "/saldo" [inicio fim]
+             (let [data-inicio (parse-data inicio)
+                   data-fim (parse-data fim)
+                   todas-transacoes (concat @alimentos @atividades)
+                   transacoes-no-periodo (filter (fn [{:keys [data]}]
+                                                   (let [data-transacao (parse-data data)]
+                                                     (and (not (.isBefore data-transacao data-inicio))
+                                                          (not (.isAfter data-transacao data-fim)))))
+                                                 todas-transacoes)
+                   converter-calorias (fn [valor]
+                                        (cond
+                                          (string? valor) (Double/parseDouble (re-find #"\d+(?:\.\d+)?" valor))
+                                          (number? valor) valor
+                                          :else 0))
+                   total-ganho (reduce + 0 (map #(converter-calorias (:calorias %))
+                                                (filter #(= (:tipo %) "ganho") transacoes-no-periodo)))
+                   total-perda (reduce + 0 (map #(converter-calorias (:calorias %))
+                                                (filter #(= (:tipo %) "perda") transacoes-no-periodo)))
+                   saldo-total (- total-ganho total-perda)]
                {:status 200
                 :headers {"Content-Type" "application/json"}
-                :body (json/generate-string {:saldo saldo})}))
+                :body (json/generate-string {:ganho total-ganho
+                                             :perda total-perda
+                                             :saldo saldo-total})}))
+
+
+
+
+
 
            (route/not-found
              {:status 404
@@ -132,4 +157,3 @@
                         :body (json/generate-string {:atividade "corrida"})})]
     (println "Resposta do servidor:" (:status res))
     (println (slurp (:body res)))))
-,

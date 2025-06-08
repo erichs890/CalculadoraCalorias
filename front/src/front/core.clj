@@ -82,10 +82,11 @@
     (println "Informe a data final (YYYY-MM-DD):")
     (flush)
     (let [data-final (read-line)
-          endpoint (str "/saldo?data_inicio=" data-inicial "&data_fim=" data-final)
+          endpoint (str "/saldo?inicio=" data-inicial "&fim=" data-final)
           res (get-json endpoint)]
       (println "Saldo de calorias:")
       (println res))))
+
 
 
 (defn menu []
