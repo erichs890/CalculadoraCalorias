@@ -1,3 +1,4 @@
+
 (ns front.core
   (:require [clj-http.client :as http]
             [cheshire.core :as json]
@@ -41,27 +42,57 @@
 (defn consultar-dados-pessoais []
   (println "Consultando dados pessoais...")
   (let [res (get-json "/usuario")]
-    (println "Dados do usuário:")
-    (println res)))
+    (if (seq res)
+      (do
+        (println "\n=== Dados Pessoais do Usuário ===")
+        (println "Altura: " (:altura res) "m")
+        (println "Peso:   " (:peso res) "kg")
+        (println "Idade:  " (:idade res) "anos")
+        (println "Sexo:   " (case (:sexo res)
+                              "M" "Masculino"
+                              "F" "Feminino"
+                              (:sexo res))))
+      (println "Nenhum dado pessoal encontrado."))))
+
 
 
 (defn registrar-consumo-alimento []
   (println "Informe a descrição do alimento consumido:")
   (flush)
-  (let [descricao (read-line)
-        dados {:descricao descricao}
-        res (post-json "/alimento" dados)]
-    (println "Resposta do servidor:")
-    (println res)))
+  (let [descricao (read-line)]
+    (println "Informe a quantidade consumida (unidades):")
+    (flush)
+    (let [quantidade-str (read-line)
+          quantidade (try
+                       (Double/parseDouble quantidade-str)
+                       (catch Exception _
+                         (println "Quantidade inválida, usando 1 como padrão.")
+                         1.0))
+          dados {:descricao descricao
+                 :quantidade quantidade}
+          res (post-json "/alimento" dados)]
+      (println "Resposta do servidor:")
+      (println res))))
+
 
 (defn registrar-atividade-fisica []
   (println "Informe a atividade física realizada (ex: skiing):")
   (flush)
-  (let [atividade (read-line)
-        dados {:atividade atividade}
-        res (post-json "/atividade" dados)]
-    (println "Resposta do servidor:")
-    (println res)))
+  (let [atividade (read-line)]
+    (println "Informe a duração (em minutos):")
+    (flush)
+    (let [duracao-str (read-line)
+          duracao (try
+                    (Double/parseDouble duracao-str)
+                    (catch Exception _
+                      (println "Duração inválida, usando 1 minuto como padrão.")
+                      1.0))
+          dados {:atividade atividade
+                 :duracao duracao}
+          res (post-json "/atividade" dados)]
+      (println "Resposta do servidor:")
+      (println res))))
+
 
 (defn consultar-extrato []
   (println "Informe a data inicial (YYYY-MM-DD):")
@@ -71,9 +102,20 @@
     (flush)
     (let [data-final (read-line)
           endpoint (str "/extrato?inicio=" data-inicial "&fim=" data-final)
-          res (get-json endpoint)]
-      (println "Extrato de transações:")
-      (println res))))
+          res (get-json endpoint)
+          extrato (:extrato res)]
+      (println "\n=== Extrato de Transações ===")
+      (if (seq extrato)
+        (doseq [transacao extrato]
+          (let [{:keys [tipo descricao quantidade calorias data]} transacao]
+            (println "-----------------------------")
+            (println "Tipo:      " (str/capitalize (name tipo)))
+            (println "Descrição: " descricao)
+            (when quantidade
+              (println "Quantidade:" quantidade))
+            (println "Calorias:  " calorias)
+            (println "Data:      " data)))
+        (println "Nenhuma transação encontrada no período informado.")))))
 
 (defn consultar-saldo-calorias []
   (println "Informe a data inicial (YYYY-MM-DD):")
@@ -84,8 +126,12 @@
     (let [data-final (read-line)
           endpoint (str "/saldo?inicio=" data-inicial "&fim=" data-final)
           res (get-json endpoint)]
-      (println "Saldo de calorias:")
-      (println res))))
+      (println "\n=== Saldo de Calorias ===")
+      (println "Período: " data-inicial " até " data-final)
+      (println "Total de calorias consumidas: " (:ganho res))
+      (println "Total de calorias gastas:     " (:perda res))
+      (println "Saldo final de calorias:      " (:saldo res)))))
+
 
 
 

@@ -25,6 +25,12 @@
     (and (not (.isBefore data inicio))
          (not (.isAfter data fim)))))
 
+(defn extrair-numero [s]
+  (try
+    (Double/parseDouble (re-find #"\d+(?:\.\d+)?" s))
+    (catch Exception _ 0.0)))
+
+
 ;; ROTAS
 (defroutes rotas
            (GET "/" [] "Servidor de Calorias Ativo.")
@@ -42,27 +48,55 @@
               :headers {"Content-Type" "application/json"}
               :body (json/generate-string @usuarios)})
 
+           (GET "/alimentos-opcoes" req
+             (let [descricao (get-in req [:query-params "descricao"])
+                   url (str "https://caloriasporalimentoapi.herokuapp.com/api/calorias/?descricao="
+                            (URLEncoder/encode descricao "UTF-8"))]
+               (try
+                 (let [res (http/get url {:as :json})]
+                   {:status 200
+                    :headers {"Content-Type" "application/json"}
+                    :body (json/generate-string (:body res))})
+                 (catch Exception e
+                   {:status 500
+                    :headers {"Content-Type" "application/json"}
+                    :body (json/generate-string {:erro "Erro ao buscar opções de alimentos"
+                                                 :detalhes (.getMessage e)})}))))
+
            ;; ALIMENTO
            (POST "/alimento" req
-             (let [desc (:descricao (-> req :body slurp (json/parse-string true)))
+             (let [{:keys [descricao quantidade]} (-> req :body slurp (json/parse-string true))
+                   quantidade (or (try (Double/parseDouble (str quantidade)) (catch Exception _ 1.0)) 1.0)
                    url (str "https://caloriasporalimentoapi.herokuapp.com/api/calorias/?descricao="
-                            (URLEncoder/encode desc "UTF-8"))]
+                            (URLEncoder/encode descricao "UTF-8"))]
                (try
-                 (let [res   (http/get url {:as :json})
-                       item  (first (:body res))
-                       cal   (:calorias item)]
-                   (if cal
-                     (let [trans {:tipo "ganho" :descricao desc :calorias cal :data (str (LocalDate/now))}]
+                 (let [res (http/get url {:as :json})
+                       item (first (:body res))
+                       cal-str (:calorias item)
+                       cal (extrair-numero cal-str)]
+                   (if (pos? cal)
+                     (let [cal-total (* cal quantidade)
+                           trans {:tipo "ganho"
+                                  :descricao descricao
+                                  :quantidade quantidade
+                                  :calorias cal-total
+                                  :data (str (LocalDate/now))}]
                        (swap! alimentos conj trans)
                        (swap! extrato conj trans)
                        (swap! saldo conj trans)
-                       {:status 200 :headers {"Content-Type" "application/json"}
-                        :body (json/generate-string {:mensagem "Alimento registrado." :transacao trans})})
-                     {:status 404 :headers {"Content-Type" "application/json"}
+                       {:status 200
+                        :headers {"Content-Type" "application/json"}
+                        :body (json/generate-string {:mensagem "Alimento registrado."
+                                                     :transacao trans})})
+                     {:status 404
+                      :headers {"Content-Type" "application/json"}
                       :body (json/generate-string {:erro "Alimento não encontrado"})}))
                  (catch Exception e
-                   {:status 500 :headers {"Content-Type" "application/json"}
-                    :body (json/generate-string {:erro "Erro API externa" :detalhes (.getMessage e)})}))))
+                   {:status 500
+                    :headers {"Content-Type" "application/json"}
+                    :body (json/generate-string {:erro "Erro API externa"
+                                                 :detalhes (.getMessage e)})})))) ;
+
            ;; LISTAR ALIMENTOS REGISTRADOS
            (GET "/alimento" []
              {:status 200
@@ -71,24 +105,34 @@
 
            ;; ATIVIDADE
            (POST "/atividade" req
-             (let [desc (:atividade (-> req :body slurp (json/parse-string true)))
+             (let [{:keys [atividade duracao]} (-> req :body slurp (json/parse-string true))
                    url (str "https://api.api-ninjas.com/v1/caloriesburned?activity="
-                            (URLEncoder/encode desc "UTF-8"))]
+                            (URLEncoder/encode atividade "UTF-8"))]
                (try
                  (let [res (http/get url {:as :json
                                           :headers {"X-Api-Key" "RaqCO+Sd6+TUFytNoDUGRw==WcZX1CDynYAXO554"}})
                        item (first (:body res))
-                       cal (:total_calories item)]
-                   (if cal
-                     (let [trans {:tipo "perda" :descricao desc :calorias cal :data (str (LocalDate/now))}]
+                       cal-por-hora (:calories_per_hour item)]
+                   (if cal-por-hora
+                     (let [dur (or duracao 1) ; duração em minutos, padrão 1
+                           cal-por-minuto (/ cal-por-hora 60.0)
+                           total-cal (* cal-por-minuto dur)
+                           trans {:tipo "perda"
+                                  :descricao (str atividade " (" dur " min)")
+                                  :calorias total-cal
+                                  :data (str (LocalDate/now))}]
                        (swap! atividades conj trans)
                        (swap! extrato conj trans)
                        (swap! saldo conj trans)
-                       {:status 200 :headers {"Content-Type" "application/json"}
+                       {:status 200
+                        :headers {"Content-Type" "application/json"}
                         :body (json/generate-string {:mensagem "Atividade registrada." :transacao trans})})
                      {:status 404 :body (json/generate-string {:erro "Atividade não encontrada"})}))
                  (catch Exception e
                    {:status 500 :body (json/generate-string {:erro "Erro API externa"})}))))
+
+
+
 
            (GET "/atividade" []
              {:status 200
